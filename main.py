@@ -158,3 +158,4 @@ plt.plot( np.argmin(results.history["val_loss"]), np.min(results.history["val_lo
 plt.xlabel("Epochs")
 plt.ylabel("log_loss")
 plt.legend()
+plt.show()

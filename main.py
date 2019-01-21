@@ -1,161 +1,59 @@
 import os
-import random
-import pandas as pd
+from data_load import get_data
+import model
 import numpy as np
-import matplotlib.pyplot as plt
-plt.style.use("ggplot")
+from keras.layers import Input
+from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+from plot import plotting, plot_sample
+from keras.optimizers import Adam
+
 # %matplotlib inline
 
-from tqdm import tqdm_notebook, tnrange
-from itertools import chain
-from skimage.io import imread, imshow, concatenate_images
-from skimage.transform import resize
-from skimage.morphology import label
 from sklearn.model_selection import train_test_split
 
-import tensorflow as tf
-
-from keras.models import Model, load_model
-from keras.layers import Input, BatchNormalization, Activation, Dense, Dropout
-from keras.layers.core import Lambda, RepeatVector, Reshape
-from keras.layers.convolutional import Conv2D, Conv2DTranspose
-from keras.layers.pooling import MaxPooling2D, GlobalMaxPool2D
-from keras.layers.merge import concatenate, add
-from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
-from keras.optimizers import Adam
-from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
-
-
-# Set some parameters
 im_width = 128
 im_height = 128
-border = 5
 root_path = os.getcwd()
 path_train = root_path+'\\input\\train\\'
 path_test = root_path+'\\input\\test\\'
 
 
-# Get and resize train images and masks
-def get_data(path, train=True):
-
-
-    ids = next(os.walk(path + "images"))[2]
-    X = np.zeros((len(ids), im_height, im_width, 1), dtype=np.float32)
-    if train:
-        y = np.zeros((len(ids), im_height, im_width, 1), dtype=np.float32)
-    print('Getting and resizing images ... ')
-    for n, id_ in tqdm_notebook(enumerate(ids), total=len(ids)):
-        # Load images
-        img = load_img(path + '/images/' + id_, color_mode = "grayscale")
-        x_img = img_to_array(img)
-        x_img = resize(x_img, (128, 128, 1), mode='constant', preserve_range=True)
-
-        # Load masks
-        if train:
-            mask = img_to_array(load_img(path + '/masks/' + id_, color_mode = "grayscale"))
-            mask = resize(mask, (128, 128, 1), mode='constant', preserve_range=True)
-
-        # Save images
-        X[n, ..., 0] = x_img.squeeze() / 255
-        if train:
-            y[n] = mask / 255
-    print('Done!')
-    if train:
-        return X, y
-    else:
-        return X
-
-
-
-
-def conv2d_block(input_tensor, n_filters, kernel_size=3, batchnorm=True):
-    # first layer
-    x = Conv2D(filters=n_filters, kernel_size=(kernel_size, kernel_size), kernel_initializer="he_normal",
-               padding="same")(input_tensor)
-    if batchnorm:
-        x = BatchNormalization()(x)
-    x = Activation("relu")(x)
-    # second layer
-    x = Conv2D(filters=n_filters, kernel_size=(kernel_size, kernel_size), kernel_initializer="he_normal",
-               padding="same")(x)
-    if batchnorm:
-        x = BatchNormalization()(x)
-    x = Activation("relu")(x)
-    return x
-
-
-def get_unet(input_img, n_filters=16, dropout=0.5, batchnorm=True):
-    # contracting path
-    c1 = conv2d_block(input_img, n_filters=n_filters * 1, kernel_size=3, batchnorm=batchnorm)
-    p1 = MaxPooling2D((2, 2))(c1)
-    p1 = Dropout(dropout * 0.5)(p1)
-
-    c2 = conv2d_block(p1, n_filters=n_filters * 2, kernel_size=3, batchnorm=batchnorm)
-    p2 = MaxPooling2D((2, 2))(c2)
-    p2 = Dropout(dropout)(p2)
-
-    c3 = conv2d_block(p2, n_filters=n_filters * 4, kernel_size=3, batchnorm=batchnorm)
-    p3 = MaxPooling2D((2, 2))(c3)
-    p3 = Dropout(dropout)(p3)
-
-    c4 = conv2d_block(p3, n_filters=n_filters * 8, kernel_size=3, batchnorm=batchnorm)
-    p4 = MaxPooling2D(pool_size=(2, 2))(c4)
-    p4 = Dropout(dropout)(p4)
-
-    c5 = conv2d_block(p4, n_filters=n_filters * 16, kernel_size=3, batchnorm=batchnorm)
-
-    # expansive path
-    u6 = Conv2DTranspose(n_filters * 8, (3, 3), strides=(2, 2), padding='same')(c5)
-    u6 = concatenate([u6, c4])
-    u6 = Dropout(dropout)(u6)
-    c6 = conv2d_block(u6, n_filters=n_filters * 8, kernel_size=3, batchnorm=batchnorm)
-
-    u7 = Conv2DTranspose(n_filters * 4, (3, 3), strides=(2, 2), padding='same')(c6)
-    u7 = concatenate([u7, c3])
-    u7 = Dropout(dropout)(u7)
-    c7 = conv2d_block(u7, n_filters=n_filters * 4, kernel_size=3, batchnorm=batchnorm)
-
-    u8 = Conv2DTranspose(n_filters * 2, (3, 3), strides=(2, 2), padding='same')(c7)
-    u8 = concatenate([u8, c2])
-    u8 = Dropout(dropout)(u8)
-    c8 = conv2d_block(u8, n_filters=n_filters * 2, kernel_size=3, batchnorm=batchnorm)
-
-    u9 = Conv2DTranspose(n_filters * 1, (3, 3), strides=(2, 2), padding='same')(c8)
-    u9 = concatenate([u9, c1], axis=3)
-    u9 = Dropout(dropout)(u9)
-    c9 = conv2d_block(u9, n_filters=n_filters * 1, kernel_size=3, batchnorm=batchnorm)
-
-    outputs = Conv2D(1, (1, 1), activation='sigmoid')(c9)
-    model = Model(inputs=[input_img], outputs=[outputs])
-    return model
-
 X, y = get_data(path_train, train=True)
-
-# Split train and valid
 X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.15, random_state=2018)
 
-input_img = Input((im_height, im_width, 1), name='img')
-model = get_unet(input_img, n_filters=16, dropout=0.05, batchnorm=True)
 
-model.compile(optimizer=Adam(), loss="binary_crossentropy", metrics=["accuracy"])
-model.summary()
+def train():
+    callbacks = [
+        EarlyStopping(patience=10, verbose=1),
+        ReduceLROnPlateau(factor=0.1, patience=3, min_lr=0.00001, verbose=1),
+        ModelCheckpoint('model-bottles.h5', verbose=1, save_best_only=True, save_weights_only=True)
+    ]
 
-callbacks = [
-    EarlyStopping(patience=10, verbose=1),
-    ReduceLROnPlateau(factor=0.1, patience=3, min_lr=0.00001, verbose=1),
-    ModelCheckpoint('model-bottles.h5', verbose=1, save_best_only=True, save_weights_only=True)
-]
-
-results = model.fit(X_train, y_train, batch_size=8, epochs=100, callbacks=callbacks,
+    input_img = Input((im_height, im_width, 1), name='img')
+    unet = model.get_unet( input_img, n_filters=16, dropout=0.05, batchnorm=True)
+    unet.compile(optimizer=Adam(), loss="binary_crossentropy", metrics=["accuracy"])
+    # model.summary()
+    results = unet.fit(X_train, y_train, batch_size=8, epochs=100, callbacks=callbacks,
                     validation_data=(X_valid, y_valid))
 
+    plotting(results)
+    return unet
 
-plt.figure(figsize=(8, 8))
-plt.title("Learning curve")
-plt.plot(results.history["loss"], label="loss")
-plt.plot(results.history["val_loss"], label="val_loss")
-plt.plot( np.argmin(results.history["val_loss"]), np.min(results.history["val_loss"]), marker="x", color="r", label="best model")
-plt.xlabel("Epochs")
-plt.ylabel("log_loss")
-plt.legend()
-plt.show()
+def predict():
+    input_img = Input((im_height, im_width, 1), name='img')
+    unet = model.get_unet(input_img, n_filters=16, dropout=0.05, batchnorm=True)
+    unet.compile(optimizer=Adam(), loss="binary_crossentropy", metrics=["accuracy"])
+    unet.load_weights('model-bottles.h5')
+    # unet.evaluate(X_valid, y_valid, verbose=1)
+    preds_train = unet.predict(X_train, verbose=1)
+    preds_val = unet.predict(X_valid, verbose=1)
+
+    # Threshold predictions
+    preds_train_t = (preds_train > 0.5).astype(np.uint8)
+    preds_val_t = (preds_val > 0.5).astype(np.uint8)
+    # plot_sample(X_train, y_train, preds_train, preds_train_t, ix=None)
+    plot_sample(X_valid, y_valid, preds_val, preds_val_t, ix=None)
+
+
+# train()
+predict()

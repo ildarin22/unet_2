@@ -77,8 +77,8 @@ def get_unet_v1(n_filters=16, dropout=0.5, batchnorm=True):
     return model
 
 
-def get_unet_v2(pretrained_weights=None, input_size=(128, 128, 1)):
-    inputs = Input(input_size)
+def get_unet_v2(img_h, img_w, pretrained_weights=None):
+    inputs = Input((img_h,img_w,1))
     conv1 = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(inputs)
     conv1 = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)

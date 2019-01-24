@@ -28,7 +28,8 @@ def plot_sample(X, y, preds, binary_preds, ix=None):
         ax[0].contour(y[ix].squeeze())
     ax[0].set_title('Bottle')
 
-    ax[1].imshow(preds[ix].squeeze(), vmin=0, vmax=1)
+    ax[1].imshow(preds[ix, ..., 0])
+    # ax[1].imshow(preds[ix].squeeze(), vmin=0, vmax=1)
     if has_mask:
         ax[1].contour(y[ix].squeeze())
     ax[1].set_title('Bottle Predicted')

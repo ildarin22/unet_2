@@ -52,7 +52,7 @@ def predict(ver_2 = False):
     preds_train_t = (preds_train > 0.5).astype(np.uint8)
     preds_val_t = (preds_val > 0.5).astype(np.uint8)
     # plot_sample(X_train, y_train, preds_train, preds_train_t, ix=None)
-    # plot_sample(X_valid, y_valid, preds_val, preds_val_t, ix=None)
+    plot_sample(X_valid, y_valid, preds_val, preds_val_t, ix=None)
 
     testGene = testGenerator(path_test,1)
     results = unet.predict_generator(testGene, 1, verbose=1)
